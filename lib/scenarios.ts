@@ -49,9 +49,24 @@ function pairKey(a: number, b: number): string {
   return a < b ? `${a}_${b}` : `${b}_${a}`;
 }
 
+/**
+ * Deterministic PRNG (mulberry32). A fixed seed makes the Monte Carlo result
+ * stable across refreshes: the same data always yields the same probability, so
+ * the UI only changes when real match data changes — no per-poll flicker.
+ */
+function makeRng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /** Pick one option in proportion to its probability weight. */
-function weightedPick(options: MatchOption[]): MatchOption {
-  let r = Math.random();
+function weightedPick(options: MatchOption[], rng: () => number): MatchOption {
+  let r = rng();
   for (const o of options) {
     r -= o.prob;
     if (r <= 0) return o;
@@ -366,9 +381,11 @@ export function computeScenarios(
       handleBranch(picks, weight);
     }
   } else {
-    // Monte Carlo: sample each outcome by its strength weight (each sample = 1).
+    // Monte Carlo with a FIXED seed so results are stable between refreshes
+    // (same data -> same probability). Each sample contributes weight 1.
+    const rng = makeRng(0x9e3779b9);
     for (let s = 0; s < sampleBranches; s++) {
-      const picks = fixturesOpts.map((fo) => weightedPick(fo.options));
+      const picks = fixturesOpts.map((fo) => weightedPick(fo.options, rng));
       handleBranch(picks, 1);
     }
   }
