@@ -7,6 +7,7 @@ import {
   todayKSTKey,
   weekdayShort,
 } from "@/lib/format";
+import { curatedRuleFor, curatedSatisfied, curatedLabel } from "@/lib/curatedFavor";
 import type { FinishedImpact } from "@/lib/finishedImpact";
 import type { Fixture, MatchImpact } from "@/lib/types";
 
@@ -95,23 +96,40 @@ export default function TodayMatches({ fixtures, impacts, finishedImpacts, korea
     (byDate.get(k) ?? byDate.set(k, []).get(k)!).push(f);
   }
 
-  const relationOf = (f: Fixture): { relation: Relation; text: string } => {
+  const relationOf = (
+    f: Fixture,
+  ): { relation: Relation; badge: string; note?: string } => {
+    // Curated cases take priority over the computed engine.
+    const rule = curatedRuleFor(f.home.code, f.away.code);
+    if (rule) {
+      if (f.phase === "finished" && f.homeGoals != null && f.awayGoals != null) {
+        const ok = curatedSatisfied(rule, f.home.code!, f.homeGoals, f.awayGoals);
+        return ok
+          ? { relation: "good", badge: "한국 유리" }
+          : { relation: "bad", badge: "한국 불리" };
+      }
+      return { relation: "watch", badge: "유리 조건", note: curatedLabel(rule) };
+    }
+
+    // Fallback: computed engine.
     if (f.phase === "finished") {
       const r = finishedImpacts[f.id]?.result ?? "neutral";
-      if (r === "good") return { relation: "good", text: "한국 유리" };
-      if (r === "bad") return { relation: "bad", text: "한국 불리" };
-      return { relation: "neutral", text: "상관없음" };
+      if (r === "good") return { relation: "good", badge: "한국 유리" };
+      if (r === "bad") return { relation: "bad", badge: "한국 불리" };
+      return { relation: "neutral", badge: "상관없음" };
     }
     const impact = impacts[f.id];
     const ratios = impact?.ratios;
     const avail = ratios ? [ratios.home, ratios.draw, ratios.away].filter((v) => v >= 0) : [];
     const swing = avail.length ? Math.max(...avail) - Math.min(...avail) : 0;
-    if (!impact || swing < 0.02) return { relation: "neutral", text: "상관없음" };
+    if (!impact || swing < 0.02) return { relation: "neutral", badge: "상관없음" };
     const favs: string[] = [];
-    if (impact.favorable.home) favs.push(`${f.home.name} 승`);
-    if (impact.favorable.draw) favs.push("무");
-    if (impact.favorable.away) favs.push(`${f.away.name} 승`);
-    return { relation: "watch", text: favs.length ? `${favs.join("·")} 시 유리` : "변수 경기" };
+    if (impact.favorable.home) favs.push(`${f.home.name} 승리`);
+    if (impact.favorable.draw) favs.push("무승부");
+    if (impact.favorable.away) favs.push(`${f.away.name} 승리`);
+    return favs.length
+      ? { relation: "watch", badge: "유리 조건", note: `${favs.join(" · ")} 시 유리` }
+      : { relation: "neutral", badge: "상관없음" };
   };
 
   return (
@@ -168,7 +186,7 @@ export default function TodayMatches({ fixtures, impacts, finishedImpacts, korea
               <div className="divide-y divide-line">
                 {byDate.get(k)!.map((f) => {
                   const isKorea = f.home.id === koreaId || f.away.id === koreaId;
-                  const { relation, text } = relationOf(f);
+                  const { relation, badge, note } = relationOf(f);
                   return (
                     <div
                       key={f.id}
@@ -193,9 +211,14 @@ export default function TodayMatches({ fixtures, impacts, finishedImpacts, korea
                         {f.group}조{f.matchday ? ` ${f.matchday}차전` : ""}
                         {isKorea && " · 🇰🇷"}
                       </div>
-                      {/* Relation badge */}
-                      <div className="col-span-3 flex justify-center sm:col-span-1 sm:justify-end">
-                        <RelationBadge relation={relation} text={text} />
+                      {/* Relation badge + optional condition note */}
+                      <div className="col-span-3 flex flex-col items-center gap-1 sm:col-span-1 sm:items-end">
+                        <RelationBadge relation={relation} text={badge} />
+                        {note && (
+                          <span className="text-[11px] font-medium leading-tight text-blue sm:text-right">
+                            {note}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
