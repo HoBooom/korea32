@@ -81,7 +81,7 @@ function statusCell(f: Fixture) {
   );
 }
 
-export default function TodayMatches({ fixtures, impacts, finishedImpacts, koreaId }: Props) {
+export default function TodayMatches({ fixtures, koreaId }: Props) {
   const today = todayKSTKey();
   const windowKeys = Array.from({ length: WINDOW_AHEAD + 1 }, (_, i) => addDaysKey(today, i));
   const windowSet = new Set(windowKeys);
@@ -96,40 +96,21 @@ export default function TodayMatches({ fixtures, impacts, finishedImpacts, korea
     (byDate.get(k) ?? byDate.set(k, []).get(k)!).push(f);
   }
 
+  // Only the curated 9 matches carry a Korea impact. Every other match is
+  // explicitly "상관없음" — the computed engine no longer drives the schedule.
   const relationOf = (
     f: Fixture,
   ): { relation: Relation; badge: string; note?: string } => {
-    // Curated cases take priority over the computed engine.
     const rule = curatedRuleFor(f.home.code, f.away.code);
-    if (rule) {
-      if (f.phase === "finished" && f.homeGoals != null && f.awayGoals != null) {
-        const ok = curatedSatisfied(rule, f.home.code!, f.homeGoals, f.awayGoals);
-        return ok
-          ? { relation: "good", badge: "한국 유리" }
-          : { relation: "bad", badge: "한국 불리" };
-      }
-      return { relation: "watch", badge: "유리 조건", note: curatedLabel(rule) };
-    }
+    if (!rule) return { relation: "neutral", badge: "상관없음" };
 
-    // Fallback: computed engine.
-    if (f.phase === "finished") {
-      const r = finishedImpacts[f.id]?.result ?? "neutral";
-      if (r === "good") return { relation: "good", badge: "한국 유리" };
-      if (r === "bad") return { relation: "bad", badge: "한국 불리" };
-      return { relation: "neutral", badge: "상관없음" };
+    if (f.phase === "finished" && f.homeGoals != null && f.awayGoals != null) {
+      const ok = curatedSatisfied(rule, f.home.code!, f.homeGoals, f.awayGoals);
+      return ok
+        ? { relation: "good", badge: "한국 유리" }
+        : { relation: "bad", badge: "한국 불리" };
     }
-    const impact = impacts[f.id];
-    const ratios = impact?.ratios;
-    const avail = ratios ? [ratios.home, ratios.draw, ratios.away].filter((v) => v >= 0) : [];
-    const swing = avail.length ? Math.max(...avail) - Math.min(...avail) : 0;
-    if (!impact || swing < 0.02) return { relation: "neutral", badge: "상관없음" };
-    const favs: string[] = [];
-    if (impact.favorable.home) favs.push(`${f.home.name} 승리`);
-    if (impact.favorable.draw) favs.push("무승부");
-    if (impact.favorable.away) favs.push(`${f.away.name} 승리`);
-    return favs.length
-      ? { relation: "watch", badge: "유리 조건", note: `${favs.join(" · ")} 시 유리` }
-      : { relation: "neutral", badge: "상관없음" };
+    return { relation: "watch", badge: "유리 조건", note: curatedLabel(rule) };
   };
 
   return (
