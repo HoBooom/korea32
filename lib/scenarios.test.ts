@@ -116,8 +116,10 @@ describe("computeScenarios", () => {
     const r = computeScenarios(data, KOR);
 
     expect(r.status).toBe("CONTENDS");
-    // Korea advances only when L4 (away) beats L3 -> 1 of 3 branches.
-    expect(r.scenarioRatio).toBeCloseTo(1 / 3, 5);
+    // Korea advances only when L4 (away) beats L3 — a strict subset of outcomes,
+    // so the strength-weighted probability sits strictly between 0 and 1.
+    expect(r.scenarioRatio).toBeGreaterThan(0);
+    expect(r.scenarioRatio).toBeLessThan(1);
     const impact = r.matchImpacts.find((m) => m.fixtureId === 9001)!;
     expect(impact.favorable.away).toBe(true);
     expect(impact.favorable.home).toBe(false);

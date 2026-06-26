@@ -1,6 +1,7 @@
 import { fifaRankOf } from "./fifaRanking";
 import { GROUP_LABELS } from "./standings";
 import { compareThirdPlace, tieNeedsDiscipline, THIRD_PLACE_SLOTS } from "./thirdPlace";
+import { MARGIN_WEIGHTS, outcomeProb } from "./winProb";
 import type {
   Fixture,
   GroupLabel,
@@ -16,10 +17,8 @@ import type {
 const EXACT_BRANCH_CAP = 60_000;
 /** Random branches drawn when the exact space exceeds the cap. */
 const SAMPLE_BRANCHES = 60_000;
-/** Goal margins explored for Korea's own group (GD-sensitive). */
-const KOREA_GROUP_MARGINS = [1, 2, 3];
-/** Representative margin for all other matches (keeps the space tractable). */
-const OTHER_MARGINS = [1];
+/** Goal margins explored per match (GD-sensitive); weighted by MARGIN_WEIGHTS. */
+const MARGINS = [1, 2, 3];
 
 type Outcome = "HOME" | "DRAW" | "AWAY";
 
@@ -27,6 +26,8 @@ interface MatchOption {
   outcome: Outcome;
   homeGoals: number;
   awayGoals: number;
+  /** Strength-based probability weight of this exact option (sums to ~1 per fixture). */
+  prob: number;
 }
 
 interface FixtureOptions {
@@ -48,11 +49,33 @@ function pairKey(a: number, b: number): string {
   return a < b ? `${a}_${b}` : `${b}_${a}`;
 }
 
-function optionsFor(f: Fixture, margins: number[]): MatchOption[] {
+/** Pick one option in proportion to its probability weight. */
+function weightedPick(options: MatchOption[]): MatchOption {
+  let r = Math.random();
+  for (const o of options) {
+    r -= o.prob;
+    if (r <= 0) return o;
+  }
+  return options[options.length - 1];
+}
+
+const MARGIN_TOTAL = MARGIN_WEIGHTS.reduce((a, b) => a + b, 0);
+
+/** Build weighted options for a fixture from its strength-based outcome probs. */
+function optionsFor(f: Fixture): MatchOption[] {
+  const homeKey = f.home.code ?? f.home.name;
+  const awayKey = f.away.code ?? f.away.name;
+  const p = outcomeProb(homeKey, awayKey);
   const opts: MatchOption[] = [];
-  for (const m of margins) opts.push({ outcome: "HOME", homeGoals: m, awayGoals: 0 });
-  opts.push({ outcome: "DRAW", homeGoals: 0, awayGoals: 0 });
-  for (const m of margins) opts.push({ outcome: "AWAY", homeGoals: 0, awayGoals: m });
+  MARGINS.forEach((m, i) => {
+    const w = (MARGIN_WEIGHTS[i] ?? 0) / MARGIN_TOTAL;
+    opts.push({ outcome: "HOME", homeGoals: m, awayGoals: 0, prob: p.home * w });
+  });
+  opts.push({ outcome: "DRAW", homeGoals: 0, awayGoals: 0, prob: p.draw });
+  MARGINS.forEach((m, i) => {
+    const w = (MARGIN_WEIGHTS[i] ?? 0) / MARGIN_TOTAL;
+    opts.push({ outcome: "AWAY", homeGoals: 0, awayGoals: m, prob: p.away * w });
+  });
   return opts;
 }
 
@@ -201,11 +224,10 @@ class Engine {
           homeId: f.home.id, hg: f.homeGoals, awayId: f.away.id, ag: f.awayGoals,
         });
       } else {
-        const isKoreaGroup = f.group === kg;
         this.remaining.push({
           fixture: f,
-          isKoreaGroup,
-          options: optionsFor(f, isKoreaGroup ? KOREA_GROUP_MARGINS : OTHER_MARGINS),
+          isKoreaGroup: f.group === kg,
+          options: optionsFor(f),
         });
       }
     }
@@ -313,15 +335,17 @@ export function computeScenarios(
   let qual = 0;
   let disciplineDependent = false;
 
-  const handleBranch = (picks: MatchOption[]) => {
+  // Each branch contributes its probability weight, so the ratio is a real
+  // (strength-weighted) probability rather than an equal-weight scenario count.
+  const handleBranch = (picks: MatchOption[], weight: number) => {
     const { qualifies, disciplineGap } = engine.evaluate(picks);
-    total++;
-    if (qualifies) qual++;
+    total += weight;
+    if (qualifies) qual += weight;
     if (disciplineGap) disciplineDependent = true;
     for (let i = 0; i < picks.length; i++) {
       const t = tallies[i][picks[i].outcome];
-      t.n++;
-      if (qualifies) t.q++;
+      t.n += weight;
+      if (qualifies) t.q += weight;
     }
   };
 
@@ -331,19 +355,21 @@ export function computeScenarios(
     const picks: MatchOption[] = new Array(fixturesOpts.length);
     for (let idx = 0; idx < totalExact; idx++) {
       let rem = idx;
+      let weight = 1;
       for (let f = 0; f < fixturesOpts.length; f++) {
         const len = lengths[f];
-        picks[f] = fixturesOpts[f].options[rem % len];
+        const opt = fixturesOpts[f].options[rem % len];
+        picks[f] = opt;
+        weight *= opt.prob;
         rem = Math.floor(rem / len);
       }
-      handleBranch(picks);
+      handleBranch(picks, weight);
     }
   } else {
+    // Monte Carlo: sample each outcome by its strength weight (each sample = 1).
     for (let s = 0; s < sampleBranches; s++) {
-      const picks = fixturesOpts.map(
-        (fo) => fo.options[Math.floor(Math.random() * fo.options.length)],
-      );
-      handleBranch(picks);
+      const picks = fixturesOpts.map((fo) => weightedPick(fo.options));
+      handleBranch(picks, 1);
     }
   }
 
@@ -437,10 +463,10 @@ function buildConditions(
     return ["남은 결과와 무관하게 한국의 32강 진출이 확정되었습니다. 🎉"];
   }
   if (status === "OUT") {
-    return ["아쉽지만 현재 한국의 32강 진출 경우의 수가 없습니다."];
+    return ["아쉽지만 현재 한국의 32강 진출 가능성이 없습니다."];
   }
 
-  const lines: string[] = [`현재 경우의 수 기준 진출 가능성 약 ${pct(ratio)}.`];
+  const lines: string[] = [`현재 예상 진출 확률 약 ${pct(ratio)}.`];
 
   if (koreaFo && koreaTally) {
     const koreaIsHome = koreaFo.fixture.home.id === koreaId;
@@ -454,7 +480,7 @@ function buildConditions(
       const r = t.q / t.n;
       if (r >= 0.9999) return `한국이 ${verb} 진출 확정.`;
       if (r <= 0.0001) return `한국이 ${verb} 진출 불가.`;
-      return `한국이 ${verb} 진출 가능성 약 ${pct(r)} (다른 조 결과에 따라 결정).`;
+      return `한국이 ${verb} 진출 확률 약 ${pct(r)} (다른 조 결과에 따라 결정).`;
     };
     const w = phrase(winOutcome, `${opponent}을(를) 상대로 이기면`);
     const d = phrase("DRAW", "비기면");

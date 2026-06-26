@@ -35,7 +35,9 @@ export default function KoreaStatus({ status, ratio, conditions, koreaGroup }: P
 
       <div className="mt-6 flex items-end gap-4">
         <div>
-          <div className="text-[13px] font-medium text-muted">실시간 진출 가능성 · 경우의 수</div>
+          <div className="text-[13px] font-medium text-muted">
+            실시간 예상 진출 확률 · FIFA 랭킹 기반
+          </div>
           <div className="num-display mt-1 text-6xl font-extrabold leading-none text-primary md:text-7xl">
             {formatPercent(ratio)}
           </div>
