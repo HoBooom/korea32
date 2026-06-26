@@ -1,26 +1,66 @@
 @import "tailwindcss";
 
+/*
+  Design tokens — see designed.md (KFA-inspired design system).
+  White canvas + deep-navy chrome + Taegeuk red/blue single accents,
+  rectangular small radii (0/2/4/8px), condensed display numerals,
+  hairline borders for delineation.
+*/
+@theme {
+  /* Brand */
+  --color-navy: #0a1a3f; /* KFA Navy — chrome, headings */
+  --color-deep-navy: #06122b; /* footer / darkest surface */
+  --color-blue: #0047a0; /* Taegeuk Blue — links, active, "good" */
+  --color-primary: #cd2e3a; /* KFA Red — live/score/category/CTA */
+  --color-live: #e4002b; /* Live Red — LIVE/NEW badges */
+  --color-on-primary: #ffffff;
+
+  /* Surfaces */
+  --color-canvas: #ffffff;
+  --color-mist: #f4f5f7; /* section alt background */
+  --color-cloud: #edeff2; /* nested cards / inputs */
+  --color-sky: #e8f0fb; /* blue info tint / selection */
+
+  /* Text */
+  --color-ink: #111418; /* headings */
+  --color-body: #33373d; /* paragraph text */
+  --color-muted: #767c86; /* meta / captions */
+  --color-disabled: #a8aeb8;
+  --color-footer-muted: #9aa2b1;
+
+  /* Lines */
+  --color-line: #e3e6eb; /* hairline border/divider — primary delineation */
+
+  /* Typography */
+  --font-sans: var(--font-noto), Pretendard, "Apple SD Gothic Neo", "Malgun Gothic",
+    sans-serif;
+  --font-condensed: var(--font-condensed), "Archivo Narrow", var(--font-noto), sans-serif;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: var(--color-canvas);
+  --foreground: var(--color-body);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+/* Headings carry slight negative tracking (KFA condensed feel). */
+.tracking-display {
+  letter-spacing: -0.02em;
+}
+
+/* Condensed numerals/display (scores, big stats, English labels). */
+.num-display {
+  font-family: var(--font-condensed);
+  letter-spacing: -0.02em;
+}
+
+/* English uppercase section labels (dual KO/EN rhythm). */
+.label-caps {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
